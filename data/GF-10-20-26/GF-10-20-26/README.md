@@ -1,1 +1,0 @@
-Oysters were put into cups with a resazurin solution and then kept in an incubator at 36 degrees C. Resazurin was pipetted from each individual cup every 30 minutes for 3 hours. The plates were then ran in a spectrophotometer.
