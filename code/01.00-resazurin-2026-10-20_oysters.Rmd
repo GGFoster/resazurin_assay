@@ -29,10 +29,22 @@ Oysters from control groups, low H2O2 and high H2O2 groups were placed in cups a
 
 ## Expected inputs
 
+All inputs are read from `data_dir` (set in the `load-plates` chunk).
+
+| File | Description |
+|------|-------------|
+| `plate-<ID>.txt` or `plate-<ID>-T<hours>.txt` | Plate reader exports. The `-T<hours>` suffix is optional (see below). |
+| `layout.csv` | One row per plate well: `plate_ID`, `plate_well`, `is_blank`, `*.group` and `*.measurement` columns, and optionally a timepoint column (any column whose name starts with `time`, e.g. `timepoint (hrs)`). |
+
+The timepoint of each well comes from the plate filename suffix when present
+(one plate read per timepoint). Otherwise it comes from the layout timepoint
+column (several timepoints on one plate). Measurements need only be entered
+once per `sample_ID.group`; they are copied to that sample's other wells.
+
 
 ## Expected outputs
 
-All outputs are written to `Resazurin/outputs/01.00-resazurin-20260831-mgig-OAE-36C/`.
+All outputs are written to `outputs/01.00-resazurin-2026-10-20_oysters/`.
 
 | File | Description |
 |------|-------------|
@@ -81,15 +93,20 @@ normalize_well_id <- function(x) {
   out
 }
 
+# Timepoint from a "-T<hours>" filename suffix (e.g. "plate-C-T1.5.txt").
+# Returns NA when the filename has no time; time is then taken from the
+# layout file instead (see merge-data).
 parse_time_hr <- function(path) {
   hit <- str_match(basename(path),
                    "(?i)-T([0-9]+(?:\\.[0-9]+)?)\\.txt$")
   as.numeric(hit[, 2])
 }
 
+# Plate ID from filename, with or without a time suffix:
+# "plate-C.txt" -> "C", "plate-C-T1.5.txt" -> "C"
 parse_plate_id <- function(path) {
   hit <- str_match(basename(path),
-    "(?i)^plate-([A-Za-z0-9-]+)\\.txt$")
+    "(?i)^plate-(.+?)(?:-T[0-9]+(?:\\.[0-9]+)?)?\\.txt$")
   id <- hit[, 2]
   ifelse(is.na(id), "unknown", id)
 }
@@ -135,8 +152,9 @@ parse_plate_export <- function(path) {
     )
   }) %>%
     mutate(
-      plate_id = str_to_lower(parse_plate_id(path)),
-      time_hr  = parse_time_hr(path)
+      plate_id    = str_to_lower(parse_plate_id(path)),
+      time_hr     = parse_time_hr(path),
+      source_file = basename(path)
     )
 }
 
@@ -182,7 +200,8 @@ auc_y_label <- function(metric_name) {
 ## Plate export files
 
 ```{r load-plates}
-proj_root <- rprojroot::find_rstudio_root_file()
+proj_root <- rprojroot::find_root(
+  rprojroot::is_rstudio_project | rprojroot::is_git_root)
 data_dir  <- file.path(proj_root, "data", "GF-10-20-26")
 out_dir   <- file.path(proj_root, "outputs",
                         "01.00-resazurin-2026-10-20_oysters")
@@ -193,7 +212,7 @@ dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 plate_files <- list.files(
   data_dir,
-  pattern = "(?i)^plate-.*.txt$",
+  pattern = "(?i)^plate-.*\\.txt$",
   full.names = TRUE
 )
 
@@ -210,15 +229,15 @@ str(plate_raw)
 
 ## Plate consistency check
 
-Checks that every plate has the same number of wells at every timepoint.
-The expected well count is the mode across all plate × timepoint reads.
-Any plate with at least one deviating read is flagged and dropped entirely
-before any further analysis — removing only the aberrant timepoint would
-break the fold-change baseline calculation.
+Checks that every plate read (one plate export file) has the same number of
+wells. The expected well count is the mode across all plate files. Any plate
+with at least one deviating read is flagged and dropped entirely before any
+further analysis — removing only the aberrant timepoint would break the
+fold-change baseline calculation.
 
 ```{r plate-consistency-check, results='asis'}
 well_counts <- plate_raw %>%
-  group_by(plate_id, time_hr) %>%
+  group_by(plate_id, source_file) %>%
   summarise(n_wells = n_distinct(well_id), .groups = "drop")
 
 expected_n_wells <- as.integer(
@@ -227,19 +246,19 @@ expected_n_wells <- as.integer(
 
 inconsistent_reads <- well_counts %>%
   filter(n_wells != expected_n_wells) %>%
-  arrange(plate_id, time_hr)
+  arrange(plate_id, source_file)
 
 inconsistent_plate_ids <- unique(inconsistent_reads$plate_id)
 
 if (nrow(inconsistent_reads) > 0) {
   cat("**Plate consistency check FAILED.**",
-      "Expected", expected_n_wells, "wells per plate-timepoint read.",
+      "Expected", expected_n_wells, "wells per plate read.",
       length(inconsistent_plate_ids),
       "plate(s) have at least one deviating read and are excluded",
       "from all analyses:\n\n")
   cat(knitr::kable(
     inconsistent_reads,
-    col.names = c("Plate", "Time (h)", "Wells read"),
+    col.names = c("Plate", "File", "Wells read"),
     caption   = paste("Expected:", expected_n_wells, "wells per read")
   ), sep = "\n")
   cat("\n")
@@ -251,7 +270,7 @@ if (nrow(inconsistent_reads) > 0) {
 } else {
   cat("Plate consistency check passed: all",
       n_distinct(well_counts$plate_id), "plates have",
-      expected_n_wells, "wells at every timepoint.\n")
+      expected_n_wells, "wells in every read.\n")
 }
 ```
 
@@ -306,6 +325,47 @@ layout_clean <- layout_clean %>%
   mutate(across(all_of(measurement_cols),
                 ~ suppressWarnings(as.numeric(.x))))
 
+# Measurements describe an individual, so they may be entered on only one of
+# that individual's rows (e.g. the T0 well). Copy them to every row sharing
+# the same sample_id_group so metabolism can be computed at all timepoints.
+if ("sample_id_group" %in% names(layout_clean) && length(measurement_cols) > 0) {
+  layout_clean <- layout_clean %>%
+    mutate(fill_key = if_else(
+      !is_blank & !is.na(sample_id_group) & trimws(sample_id_group) != "",
+      trimws(sample_id_group),
+      paste0(".row", row_number())
+    ))
+
+  conflicting <- layout_clean %>%
+    pivot_longer(all_of(measurement_cols),
+                 names_to = "measurement", values_to = "val") %>%
+    filter(is.finite(val)) %>%
+    group_by(fill_key, measurement) %>%
+    filter(n_distinct(val) > 1) %>%
+    distinct(fill_key, measurement)
+  if (nrow(conflicting) > 0)
+    warning("Samples with conflicting measurement values in layout: ",
+            paste(unique(conflicting$fill_key), collapse = ", "))
+
+  layout_clean <- layout_clean %>%
+    group_by(fill_key) %>%
+    fill(all_of(measurement_cols), .direction = "downup") %>%
+    ungroup() %>%
+    select(-fill_key)
+}
+
+# Optional per-well timepoint column (e.g. "timepoint (hrs)" -> "timepoint_hrs").
+# Used when plate filenames carry no "-T<hours>" suffix.
+layout_time_col <- names(layout_clean)[str_detect(names(layout_clean), "^time")][1]
+layout_clean <- layout_clean %>%
+  mutate(layout_time_hr = if (!is.na(layout_time_col))
+    suppressWarnings(as.numeric(.data[[layout_time_col]]))
+  else
+    NA_real_)
+
+message("Layout timepoint column: ",
+        if (is.na(layout_time_col)) "none" else layout_time_col)
+
 # Determine which measurement columns actually contain finite data
 active_meas_cols <- measurement_cols[
   sapply(measurement_cols, function(col)
@@ -330,14 +390,30 @@ dat <- plate_raw %>%
   left_join(
     layout_clean %>%
       select(plate_id, well_id, is_blank, exclude_from_analysis,
-             any_of("exclude_reason"),
+             any_of("exclude_reason"), layout_time_hr,
              all_of(group_cols), all_of(measurement_cols)),
     by = c("plate_id", "well_id")
   ) %>%
   mutate(
     is_blank = replace_na(is_blank, FALSE),
-    exclude_from_analysis = replace_na(exclude_from_analysis, FALSE)
-  )
+    exclude_from_analysis = replace_na(exclude_from_analysis, FALSE),
+    # Filename time ("-T<hours>") takes precedence; otherwise use layout time
+    time_hr = coalesce(time_hr, layout_time_hr)
+  ) %>%
+  select(-layout_time_hr)
+
+# Plates with no time source at all (no filename suffix and no layout
+# entries) cannot be analysed; report and drop them.
+untimed_plates <- dat %>%
+  group_by(plate_id) %>%
+  filter(all(is.na(time_hr))) %>%
+  distinct(plate_id) %>%
+  pull(plate_id)
+if (length(untimed_plates) > 0) {
+  message("No timepoint (filename or layout) for plate(s): ",
+          paste(untimed_plates, collapse = ", "), ". Dropped.")
+  dat <- dat %>% filter(!plate_id %in% untimed_plates)
+}
 
 str(dat)
 ```
@@ -422,7 +498,14 @@ p_raw_plates <- dat %>%
       if (!is.null(plate_group_col)) coalesce(.data[[plate_group_col]], "sample")
       else "sample"
     ),
-    trace_id     = paste(plate_id, well_id, sep = "_")
+    # One trace per sample; falls back to one per well (e.g. blanks, or
+    # layouts where each well is a single sample read across timepoints)
+    trace_id     = if_else(
+      !is_blank & !is.na(sample_id_group) &
+        trimws(as.character(sample_id_group)) != "",
+      paste(plate_id, sample_id_group, sep = "_"),
+      paste(plate_id, well_id, sep = "_")
+    )
   ) %>%
   ggplot(aes(x = time_hr, y = value,
              group = trace_id, colour = colour_group)) +
