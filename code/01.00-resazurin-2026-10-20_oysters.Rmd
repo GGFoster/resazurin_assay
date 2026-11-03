@@ -183,9 +183,9 @@ auc_y_label <- function(metric_name) {
 
 ```{r load-plates}
 proj_root <- rprojroot::find_rstudio_root_file()
-data_dir  <- file.path(proj_root, "Resazurin", "data", "20260831-mgig-OAE-36C")
-out_dir   <- file.path(proj_root, "Resazurin", "outputs",
-                        "01.00-resazurin-20260831-mgig-OAE-36C")
+data_dir  <- file.path(proj_root, "data", "GF-10-20-26")
+out_dir   <- file.path(proj_root, "outputs",
+                        "01.00-resazurin-2026-10-20_oysters")
 fig_dir   <- file.path(out_dir, "figures")
 
 dir.create(fig_dir, recursive = TRUE, showWarnings = FALSE)
@@ -193,7 +193,7 @@ dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 plate_files <- list.files(
   data_dir,
-  pattern = "(?i)^plate-.*-T[0-9]+(?:\\.[0-9]+)?\\.txt$",
+  pattern = "(?i)^plate-.*.txt$",
   full.names = TRUE
 )
 
