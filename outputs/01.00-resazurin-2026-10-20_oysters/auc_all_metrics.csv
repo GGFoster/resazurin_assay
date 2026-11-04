@@ -1,1 +1,16 @@
 trace_id,family_id_group,treatment_group,AUC,n_timepoints,metric
+1,NA,control,3.1077784156142365,7,metabolism_per_length_cm_measurement
+10,NA,low,1.7733036890645588,7,metabolism_per_length_cm_measurement
+11,NA,high,3.1238993710691827,7,metabolism_per_length_cm_measurement
+12,NA,high,0.4150326797385621,7,metabolism_per_length_cm_measurement
+13,NA,high,1.904595588235294,7,metabolism_per_length_cm_measurement
+14,NA,high,2.5221076940407796,7,metabolism_per_length_cm_measurement
+15,NA,high,4.1552678716821365,7,metabolism_per_length_cm_measurement
+2,NA,control,3.53157749586321,7,metabolism_per_length_cm_measurement
+3,NA,control,9.698510773130545,7,metabolism_per_length_cm_measurement
+4,NA,control,1.4464285714285716,7,metabolism_per_length_cm_measurement
+5,NA,control,2.4663702056698167,7,metabolism_per_length_cm_measurement
+6,NA,low,2.2316335350043217,7,metabolism_per_length_cm_measurement
+7,NA,low,2.412390887800724,7,metabolism_per_length_cm_measurement
+8,NA,low,2.6595052083333335,7,metabolism_per_length_cm_measurement
+9,NA,low,3.024503900727787,7,metabolism_per_length_cm_measurement

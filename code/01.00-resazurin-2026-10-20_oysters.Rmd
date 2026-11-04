@@ -26,6 +26,15 @@ output:
 
 Oysters from control groups, low H2O2 and high H2O2 groups were placed in cups and filled with resazurin solution. The oysters were then kept in an incubator at 36 degrees Celsius and resazurin was measured every 30 minutes for 3 hours. The resazurin plates were read using a spectrophotometer:
 
+> [!IMPORTANT]
+> This code uses blank wells from a **single timepoint (T0)** for blank
+> correction at **all** timepoints. This run has only one blank well
+> (plate C, well B04, read at T0), so blank fluorescence at later timepoints
+> is not measured. The pooled mean T0 blank RFU is applied at every
+> plate and timepoint, which means blank fold-change is always 1 and any
+> background fluorescence drift after T0 is **not** corrected for. Blank
+> wells read at later timepoints, if present, are ignored.
+
 
 ## Expected inputs
 
@@ -40,6 +49,10 @@ The timepoint of each well comes from the plate filename suffix when present
 (one plate read per timepoint). Otherwise it comes from the layout timepoint
 column (several timepoints on one plate). Measurements need only be entered
 once per `sample_ID.group`; they are copied to that sample's other wells.
+
+`is_blank` marks resazurin-only blank wells (no oyster). Empty wells can be
+left out of `layout.csv` or listed with all `*.group` columns empty; either
+way they are dropped in the `merge-data` chunk.
 
 
 ## Expected outputs
@@ -402,6 +415,15 @@ dat <- plate_raw %>%
   ) %>%
   select(-layout_time_hr)
 
+# Drop unassigned (empty) wells: not a resazurin blank and no group values.
+# Covers wells missing from the layout and wells listed with empty groups.
+if (length(group_cols) > 0) {
+  n_before <- nrow(dat)
+  dat <- dat %>%
+    filter(is_blank | if_any(all_of(group_cols), ~ !is.na(.)))
+  message("Dropped ", n_before - nrow(dat), " unassigned well reads.")
+}
+
 # Plates with no time source at all (no filename suffix and no layout
 # entries) cannot be analysed; report and drop them.
 untimed_plates <- dat %>%
@@ -676,9 +698,10 @@ Sample fold-change is expressed relative to each individual's T0 reading,
 resolved by `sample_id_group` when that column is populated — allowing the
 same animal to be tracked across plates — or by `plate_id + well_id` when
 no sample IDs exist (backward-compatible with single-plate, multi-timepoint
-designs). Blank fold-change is the per-plate mean blank RFU at each timepoint
-divided by the pooled mean blank RFU at T0. Subtracting blank fold-change from
-sample fold-change removes background fluorescence drift; all samples start at
+designs). Blank fold-change uses only the pooled mean blank RFU at T0, applied
+to every plate and timepoint (see the note in Background). Blank fold-change is
+therefore 1 at all timepoints, and subtracting it from sample fold-change does
+not correct background fluorescence drift after T0; all samples start at
 exactly 0 at T0 by construction.
 
 ## Step 1 – Identify T0 and compute per-sample fold-change
@@ -718,7 +741,7 @@ dat_fc <- dat %>%
 str(dat_fc)
 ```
 
-## Step 2 – Blank fold-change reference per plate per timepoint
+## Step 2 – Blank fold-change reference (T0 blank applied to all timepoints)
 
 ```{r blank-fc-ref}
 # Pooled mean blank RFU at T0 across all T0 plates
@@ -728,15 +751,16 @@ mean_blank_t0 <- dat %>%
   mean(na.rm = TRUE)
 
 if (!is.finite(mean_blank_t0))
-  message("No blank readings found at T0 (", t0_time,
-          " hr); blank correction will produce NA.")
+  stop("No blank readings found at T0 (", t0_time,
+       " hr); blank correction requires at least one T0 blank well.")
 
-# Per-plate per-timepoint mean blank expressed as fold-change relative to T0
+# Only a T0 blank is available, so the T0 blank RFU is used for every
+# plate and timepoint (blank fold-change = 1 throughout).
 blank_fc_ref <- dat %>%
-  filter(is_blank, is.finite(value)) %>%
-  group_by(plate_id, time_hr) %>%
-  summarise(mean_blank_rfu = mean(value, na.rm = TRUE), .groups = "drop") %>%
-  mutate(mean_blank_fc = mean_blank_rfu / mean_blank_t0)
+  filter(is.finite(time_hr)) %>%
+  distinct(plate_id, time_hr) %>%
+  mutate(mean_blank_rfu = mean_blank_t0,
+         mean_blank_fc  = mean_blank_rfu / mean_blank_t0)
 
 str(blank_fc_ref)
 ```
