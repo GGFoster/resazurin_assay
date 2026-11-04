@@ -14,7 +14,7 @@ plate-C,A12,FALSE,,12,High,,,,5.1,0
 plate-C,B01,FALSE,,13,High,,,,5,0
 plate-C,B02,FALSE,,14,High,,,,6.6,0
 plate-C,B03,FALSE,,15,High,,,,6.9,0
-plate-C,B04,TRUE,,16,blank,,,,,
+plate-C,B04,TRUE,,16,blank,,,,,0
 plate-C,B05,,,,,,,,,
 plate-C,B06,,,,,,,,,
 plate-C,B07,,,,,,,,,
