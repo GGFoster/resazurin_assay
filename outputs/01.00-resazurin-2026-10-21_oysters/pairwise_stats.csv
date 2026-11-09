@@ -1,0 +1,7 @@
+contrast,estimate,SE,df,t.ratio,p.value,comparison,metric
+control - high,0.5804414528843449,1.058922956401612,27,0.5481432330608611,0.848288105906652,family:treatment,metabolism_per_length_cm_measurement
+control - low,-0.7937976951946593,1.058922956401612,27,-0.7496274307737265,0.7364321057052152,family:treatment,metabolism_per_length_cm_measurement
+high - low,-1.3742391480790042,1.058922956401612,27,-1.2977706638345876,0.4086184022959731,family:treatment,metabolism_per_length_cm_measurement
+control - high,0.5804414528843449,1.058922956401612,27,0.5481432330608611,0.848288105906652,treatment,metabolism_per_length_cm_measurement
+control - low,-0.7937976951946593,1.058922956401612,27,-0.7496274307737265,0.7364321057052152,treatment,metabolism_per_length_cm_measurement
+high - low,-1.3742391480790042,1.058922956401612,27,-1.2977706638345876,0.4086184022959731,treatment,metabolism_per_length_cm_measurement
